@@ -95,7 +95,7 @@ if st.button("Fetch Data", type="primary"):
                         cik = raw_cik.zfill(10)
                         break
 
-            # 3. Fetch SEC Filing Data (Looking for 10-Q or 10-K)
+            # 3. Fetch SEC Filing Data (Properly scanning for the latest 10-Q or 10-K)
             latest_form = None
             filed_date = None
             report_period_display = "N/A"
@@ -111,9 +111,10 @@ if st.button("Fetch Data", type="primary"):
                     filing_dates = recent["filingDate"]
                     report_dates = recent["reportDate"]
 
-                    for i, form in enumerate(forms):
-                        if form in ["10-Q", "10-K"]:
-                            latest_form = form
+                    # Search through filings to find the most recent 10-Q or 10-K
+                    for i in range(len(forms)):
+                        if forms[i] in ["10-Q", "10-K"]:
+                            latest_form = forms[i]
                             filed_date = (
                                 filing_dates[i] if i < len(filing_dates) else "N/A"
                             )
@@ -144,7 +145,7 @@ if st.button("Fetch Data", type="primary"):
                 f"**SEC Filing Info:** Form `{latest_form or 'N/A'}` filed on `{filed_date or 'N/A'}`"
             )
 
-            # Direct Link to SEC Filings (No download button)
+            # Direct Link to SEC Filings
             st.markdown("")
             if filings_list_url:
                 st.markdown(
