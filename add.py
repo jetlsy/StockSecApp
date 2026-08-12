@@ -102,28 +102,32 @@ if st.button("Fetch Data", type="primary"):
         st.warning("Please enter a valid stock ticker.")
     else:
         with st.spinner(f"Fetching data for {ticker_input.upper()}..."):
-            # 1. Fetch Live Stock Data via yfinance
-            stock = yf.Ticker(ticker_input)
+            ticker_upper = ticker_input.upper()
+            stock = yf.Ticker(ticker_upper)
+            
+            # 1. Safely Fetch Live Stock Price via history (avoids rate limits)
+            current_price = None
             try:
-                hist = stock.history(period="1d")
+                hist = stock.history(period="5d")
                 if not hist.empty:
-                    current_price = hist["Close"].iloc[-1]
-                else:
-                    current_price = stock.info.get(
-                        "regularMarketPrice",
-                        stock.info.get("currentPrice", None),
-                    )
+                    current_price = float(hist["Close"].iloc[-1])
             except Exception:
-                current_price = None
+                pass
 
-            company_name = stock.info.get(
-                "longName", ticker_input.upper()
-            )
-
-            # 2. Fetch SEC Data
+            # 2. Match Company Name from SEC Tickers List (avoids stock.info block)
             sec_tickers_map = get_sec_tickers()
-            cik = get_cik_by_ticker(ticker_input, sec_tickers_map)
+            company_name = ticker_upper
+            cik = None
+            
+            if sec_tickers_map:
+                for _, info in sec_tickers_map.items():
+                    if info["ticker"].upper() == ticker_upper:
+                        company_name = info["title"]
+                        raw_cik = str(info["cik_str"])
+                        cik = raw_cik.zfill(10)
+                        break
 
+            # 3. Fetch SEC Filing Data
             latest_form = None
             filed_date = None
             report_period = None
@@ -156,7 +160,7 @@ if st.button("Fetch Data", type="primary"):
             st.markdown(
                 f"""
             <div class="card">
-                <div class="card-header">{company_name} ({ticker_input.upper()})</div>
+                <div class="card-header">{company_name} ({ticker_upper})</div>
                 
                 <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
                     <div>
@@ -183,7 +187,7 @@ if st.button("Fetch Data", type="primary"):
                 unsafe_allow_html=True,
             )
 
-            # Action Buttons / Links outside HTML card for native Streamlit interactions
+            # Action Buttons / Links
             st.write("")
             col1, col2 = st.columns(2)
             with col1:
