@@ -58,11 +58,11 @@ def get_quarter_from_date(date_str):
 # App Interface
 st.title("US Stock & SEC Quick Lookup")
 st.write(
-    "Enter a US stock ticker to view its exchange price, latest quarterly report period, and official SEC filing link."
+    "Enter a US stock ticker to view its exchange price, stock site links, latest reported year/quarter, and SEC filings portal."
 )
 
 ticker_input = st.text_input(
-    "Stock Ticker Symbol", value="AAPL", max_chars=10
+    "Stock Ticker Symbol", value="RXT", max_chars=10
 ).strip()
 
 if st.button("Fetch Data", type="primary"):
@@ -95,7 +95,7 @@ if st.button("Fetch Data", type="primary"):
                         cik = raw_cik.zfill(10)
                         break
 
-            # 3. Fetch SEC Filing Data (Properly scanning for the latest 10-Q or 10-K)
+            # 3. Fetch SEC Filing Data for latest Year & Quarter
             latest_form = None
             filed_date = None
             report_period_display = "N/A"
@@ -111,7 +111,6 @@ if st.button("Fetch Data", type="primary"):
                     filing_dates = recent["filingDate"]
                     report_dates = recent["reportDate"]
 
-                    # Search through filings to find the most recent 10-Q or 10-K
                     for i in range(len(forms)):
                         if forms[i] in ["10-Q", "10-K"]:
                             latest_form = forms[i]
@@ -124,7 +123,11 @@ if st.button("Fetch Data", type="primary"):
                             report_period_display = get_quarter_from_date(raw_rep)
                             break
 
-            # --- CLEAN NATIVE STREAMLIT CARD VIEW ---
+            # External Stock Site Links
+            yahoo_finance_url = f"https://finance.yahoo.com/quote/{ticker_upper}"
+            google_finance_url = f"https://www.google.com/finance/quote/{ticker_upper}:NASDAQ"
+
+            # --- DISPLAY RESULTS ---
             st.markdown("---")
             st.subheader(f"{company_name} ({ticker_upper})")
 
@@ -145,11 +148,18 @@ if st.button("Fetch Data", type="primary"):
                 f"**SEC Filing Info:** Form `{latest_form or 'N/A'}` filed on `{filed_date or 'N/A'}`"
             )
 
-            # Direct Link to SEC Filings
+            # Links Section
             st.markdown("")
+            st.markdown("### Quick Links")
+            st.markdown(
+                f"🔗 **[View on Yahoo Finance]({yahoo_finance_url})**"
+            )
+            st.markdown(
+                f"🔗 **[View on Google Finance]({google_finance_url})**"
+            )
             if filings_list_url:
                 st.markdown(
-                    f"📂 **[Click here to view all SEC filings on EDGAR]({filings_list_url})**"
+                    f"📂 **[View All SEC Filings on EDGAR]({filings_list_url})**"
                 )
             else:
-                st.info("SEC filing link unavailable for this ticker.")
+                st.info("SEC filings link unavailable for this ticker.")
