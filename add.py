@@ -8,23 +8,39 @@ st.set_page_config(
     page_title="Stock & SEC Filing Quick View", page_icon="📈", layout="centered"
 )
 
+# Known CIK Fallback Dictionary for instant reliability
+KNOWN_CIKS = {
+    "RXT": "0001810019",
+    "AAPL": "0000320193",
+    "MSFT": "0000789019",
+    "TSLA": "0001318605",
+    "MRVL": "0001058057",
+}
+
 
 @st.cache_data(ttl=86400)
 def get_sec_mapping(ticker_symbol):
-    """Finds CIK and company title from official SEC list."""
+    """Finds CIK and company title with fallback support."""
+    upper_t = ticker_symbol.upper()
+
+    # Check hardcoded fallback first for speed and reliability
+    if upper_t in KNOWN_CIKS:
+        cik = KNOWN_CIKS[upper_t]
+        return upper_t, cik
+
+    # Otherwise query SEC mapping file
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     url = "https://www.sec.gov/files/company_tickers.json"
     try:
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
             data = response.json()
-            upper_t = ticker_symbol.upper()
             for _, info in data.items():
                 if info["ticker"].upper() == upper_t:
                     return info["title"], str(info["cik_str"]).zfill(10)
     except Exception:
         pass
-    return ticker_symbol, None
+    return upper_t, None
 
 
 def get_latest_quarter(cik):
@@ -93,7 +109,7 @@ if st.button("Fetch Data", type="primary"):
             except Exception:
                 pass
 
-            # 2. Get CIK and Company Name from SEC
+            # 2. Get CIK and Company Name
             company_name, cik = get_sec_mapping(ticker_upper)
 
             # 3. Get Latest Quarter & Filing Info
