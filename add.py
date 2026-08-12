@@ -8,36 +8,20 @@ st.set_page_config(
     page_title="Stock & SEC Filing Quick View", page_icon="📈", layout="centered"
 )
 
-# Known CIK Fallback Dictionary for instant reliability
-KNOWN_CIKS = {
-    "RXT": "0001810019",
-    "AAPL": "0000320193",
-    "MSFT": "0000789019",
-    "TSLA": "0001318605",
-    "MRVL": "0001058057",
-}
-
 
 @st.cache_data(ttl=86400)
 def get_sec_mapping(ticker_symbol):
-    """Finds CIK and company title with fallback support."""
+    """Dynamically searches the full SEC database for any ticker."""
     upper_t = ticker_symbol.upper()
-
-    # Check hardcoded fallback first for speed and reliability
-    if upper_t in KNOWN_CIKS:
-        cik = KNOWN_CIKS[upper_t]
-        return upper_t, cik
-
-    # Otherwise query SEC mapping file
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    headers = {"User-Agent": "ResearchApp user@example.com"}
     url = "https://www.sec.gov/files/company_tickers.json"
     try:
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
             data = response.json()
             for _, info in data.items():
-                if info["ticker"].upper() == upper_t:
-                    return info["title"], str(info["cik_str"]).zfill(10)
+                if info.get("ticker", "").upper() == upper_t:
+                    return info.get("title", upper_t), str(info.get("cik_str")).zfill(10)
     except Exception:
         pass
     return upper_t, None
@@ -45,7 +29,7 @@ def get_sec_mapping(ticker_symbol):
 
 def get_latest_quarter(cik):
     """Fetches recent filings and extracts the latest 10-Q or 10-K period."""
-    headers = {"User-Agent": "PersonalResearchApp user@example.com"}
+    headers = {"User-Agent": "ResearchApp user@example.com"}
     url = f"https://data.sec.gov/submissions/CIK{cik}.json"
     try:
         response = requests.get(url, headers=headers)
@@ -85,7 +69,7 @@ def get_latest_quarter(cik):
 # App Interface
 st.title("US Stock & SEC Quick Lookup")
 st.write(
-    "Enter a US stock ticker to view its exchange price, stock site links, latest reported year/quarter, and SEC filings portal."
+    "Enter any US stock ticker to view its exchange price, official company website, latest reported year/quarter, and SEC filings portal."
 )
 
 ticker_input = st.text_input(
@@ -109,10 +93,22 @@ if st.button("Fetch Data", type="primary"):
             except Exception:
                 pass
 
-            # 2. Get CIK and Company Name
+            # 2. Dynamically Get CIK and Company Name from SEC
             company_name, cik = get_sec_mapping(ticker_upper)
 
-            # 3. Get Latest Quarter & Filing Info
+            # 3. Get Company Website URL
+            company_website = None
+            try:
+                info = stock.info
+                company_website = info.get("website")
+            except Exception:
+                pass
+
+            # Fallback website if info is restricted
+            if not company_website:
+                company_website = f"https://www.google.com/search?q={ticker_upper}+official+website"
+
+            # 4. Get Latest Quarter & Filing Info
             report_period_display = "N/A"
             latest_form = "N/A"
             filed_date = "N/A"
@@ -120,10 +116,6 @@ if st.button("Fetch Data", type="primary"):
 
             if cik:
                 report_period_display, latest_form, filed_date = get_latest_quarter(cik)
-
-            # External Links
-            yahoo_finance_url = f"https://finance.yahoo.com/quote/{ticker_upper}"
-            google_finance_url = f"https://www.google.com/finance/quote/{ticker_upper}:NASDAQ"
 
             # --- DISPLAY RESULTS ---
             st.markdown("---")
@@ -147,8 +139,7 @@ if st.button("Fetch Data", type="primary"):
             # Links Section
             st.markdown("")
             st.markdown("### Quick Links")
-            st.markdown(f"🔗 **[View on Yahoo Finance]({yahoo_finance_url})**")
-            st.markdown(f"🔗 **[View on Google Finance]({google_finance_url})**")
+            st.markdown(f"🔗 **[Official Company Website]({company_website})**")
             if filings_list_url:
                 st.markdown(
                     f"📂 **[View All SEC Filings on EDGAR]({filings_list_url})**"
