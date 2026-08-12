@@ -10,49 +10,60 @@ st.set_page_config(
 
 
 @st.cache_data(ttl=86400)
-def get_sec_tickers():
-    """Fetches official SEC ticker-to-CIK mapping."""
+def get_sec_mapping(ticker_symbol):
+    """Finds CIK and company title from official SEC list."""
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     url = "https://www.sec.gov/files/company_tickers.json"
     try:
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
-            return response.json()
+            data = response.json()
+            upper_t = ticker_symbol.upper()
+            for _, info in data.items():
+                if info["ticker"].upper() == upper_t:
+                    return info["title"], str(info["cik_str"]).zfill(10)
     except Exception:
         pass
-    return None
+    return ticker_symbol, None
 
 
-def get_sec_submissions(cik):
-    """Fetches filing history JSON from SEC EDGAR."""
+def get_latest_quarter(cik):
+    """Fetches recent filings and extracts the latest 10-Q or 10-K period."""
     headers = {"User-Agent": "PersonalResearchApp user@example.com"}
     url = f"https://data.sec.gov/submissions/CIK{cik}.json"
     try:
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
-            return response.json()
+            sub = response.json()
+            recent = sub.get("filings", {}).get("recent", {})
+            forms = recent.get("form", [])
+            report_dates = recent.get("reportDate", [])
+            filing_dates = recent.get("filingDate", [])
+
+            for i, form in enumerate(forms):
+                if form in ["10-Q", "10-K"]:
+                    rep_date = report_dates[i] if i < len(report_dates) else ""
+                    file_date = filing_dates[i] if i < len(filing_dates) else ""
+                    if rep_date:
+                        try:
+                            dt = datetime.strptime(rep_date, "%Y-%m-%d")
+                            m = dt.month
+                            y = dt.year
+                            q = (
+                                "Q1"
+                                if m <= 3
+                                else ("Q2" if m <= 6 else ("Q3" if m <= 9 else "Q4"))
+                            )
+                            return (
+                                f"{y} {q} (Period ended {rep_date})",
+                                form,
+                                file_date,
+                            )
+                        except Exception:
+                            pass
     except Exception:
         pass
-    return None
-
-
-def get_quarter_from_date(date_str):
-    """Converts a report date string into Year and Quarter format."""
-    try:
-        dt = datetime.strptime(date_str, "%Y-%m-%d")
-        month = dt.month
-        year = dt.year
-        if month <= 3:
-            q = "Q1"
-        elif month <= 6:
-            q = "Q2"
-        elif month <= 9:
-            q = "Q3"
-        else:
-            q = "Q4"
-        return f"{year} {q} (Period ended {date_str})"
-    except Exception:
-        return date_str
+    return "N/A", "N/A", "N/A"
 
 
 # App Interface
@@ -73,7 +84,7 @@ if st.button("Fetch Data", type="primary"):
             ticker_upper = ticker_input.upper()
             stock = yf.Ticker(ticker_upper)
 
-            # 1. Fetch Live Stock Price via history
+            # 1. Fetch Live Stock Price
             current_price = None
             try:
                 hist = stock.history(period="5d")
@@ -82,48 +93,19 @@ if st.button("Fetch Data", type="primary"):
             except Exception:
                 pass
 
-            # 2. Match Company Name & CIK from SEC Tickers List
-            sec_tickers_map = get_sec_tickers()
-            company_name = ticker_upper
-            cik = None
+            # 2. Get CIK and Company Name from SEC
+            company_name, cik = get_sec_mapping(ticker_upper)
 
-            if sec_tickers_map:
-                for _, info in sec_tickers_map.items():
-                    if info["ticker"].upper() == ticker_upper:
-                        company_name = info["title"]
-                        raw_cik = str(info["cik_str"])
-                        cik = raw_cik.zfill(10)
-                        break
-
-            # 3. Fetch SEC Filing Data for latest Year & Quarter
-            latest_form = None
-            filed_date = None
+            # 3. Get Latest Quarter & Filing Info
             report_period_display = "N/A"
-            filings_list_url = (
-                f"https://www.sec.gov/edgar/browse/?CIK={cik}" if cik else ""
-            )
+            latest_form = "N/A"
+            filed_date = "N/A"
+            filings_list_url = f"https://www.sec.gov/edgar/browse/?CIK={cik}" if cik else ""
 
             if cik:
-                submissions = get_sec_submissions(cik)
-                if submissions and "filings" in submissions:
-                    recent = submissions["filings"]["recent"]
-                    forms = recent["form"]
-                    filing_dates = recent["filingDate"]
-                    report_dates = recent["reportDate"]
+                report_period_display, latest_form, filed_date = get_latest_quarter(cik)
 
-                    for i in range(len(forms)):
-                        if forms[i] in ["10-Q", "10-K"]:
-                            latest_form = forms[i]
-                            filed_date = (
-                                filing_dates[i] if i < len(filing_dates) else "N/A"
-                            )
-                            raw_rep = (
-                                report_dates[i] if i < len(report_dates) else ""
-                            )
-                            report_period_display = get_quarter_from_date(raw_rep)
-                            break
-
-            # External Stock Site Links
+            # External Links
             yahoo_finance_url = f"https://finance.yahoo.com/quote/{ticker_upper}"
             google_finance_url = f"https://www.google.com/finance/quote/{ticker_upper}:NASDAQ"
 
@@ -136,30 +118,24 @@ if st.button("Fetch Data", type="primary"):
             with col1:
                 st.metric(
                     "Latest Exchange Price",
-                    f"${current_price:,.2f}"
-                    if current_price
-                    else "Unavailable",
+                    f"${current_price:,.2f}" if current_price else "Unavailable",
                 )
             with col2:
                 st.metric("Latest Reported Period", report_period_display)
 
             st.markdown("")
             st.markdown(
-                f"**SEC Filing Info:** Form `{latest_form or 'N/A'}` filed on `{filed_date or 'N/A'}`"
+                f"**SEC Filing Info:** Form `{latest_form}` filed on `{filed_date}`"
             )
 
             # Links Section
             st.markdown("")
             st.markdown("### Quick Links")
-            st.markdown(
-                f"🔗 **[View on Yahoo Finance]({yahoo_finance_url})**"
-            )
-            st.markdown(
-                f"🔗 **[View on Google Finance]({google_finance_url})**"
-            )
+            st.markdown(f"🔗 **[View on Yahoo Finance]({yahoo_finance_url})**")
+            st.markdown(f"🔗 **[View on Google Finance]({google_finance_url})**")
             if filings_list_url:
                 st.markdown(
                     f"📂 **[View All SEC Filings on EDGAR]({filings_list_url})**"
                 )
             else:
-                st.info("SEC filings link unavailable for this ticker.")
+                st.warning("SEC filings link unavailable for this ticker.")
